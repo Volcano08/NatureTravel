@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Map View</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+  <style>
+    body, html {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      font-family: 'Roboto', sans-serif;
+      display: flex;
+      flex-direction: column;
+    }
+    header, footer {
+      background: #333;
+      color: #fff;
+      text-align: center;
+      padding: 10px;
+      flex-shrink: 0;
+    }
+    header {
+      position: relative;
+    }
+    #back-to-homepage {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: #333;
+      color: #fff;
+      padding: 10px;
+      border: none;
+      text-decoration: none;
+      font-size: 14px;
+    }
+    #map-container {
+      flex: 1;
+      display: flex;
+      position: relative;
+    }
+    #map {
+      flex: 1;
+      width: 100%;
+    }
+    #info-panel {
+      position: absolute;
+      top: 0;
+      right: -400px;
+      width: 400px;
+      height: 100%;
+      background: rgba(255, 255, 255, 0.95);
+      box-shadow: -2px 0 5px rgba(0, 0, 0, 0.5);
+      padding: 20px;
+      transition: right 0.3s ease;
+      overflow-y: auto;
+      z-index: 1000;
+    }
+    #info-panel.show {
+      right: 0;
+    }
+    .btn-toggle, .btn-summarize {
+      background: #333;
+      color: #fff;
+      padding: 10px;
+      border: none;
+      cursor: pointer;
+      position: absolute;
+      z-index: 1001;
+    }
+    .btn-toggle {
+      top: 10px;
+      right: 10px;
+    }
+    .btn-summarize {
+      top: 50px;
+      right: 10px;
+    }
+    .loading {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 20px;
+      color: #333;
+    }
+    .flag {
+      width: 100px;
+      display: block;
+      margin-bottom: 10px;
+    }
+    .portfolio-link {
+      color: #ff5722;
+      font-weight: bold;
+      display: block;
+      margin-top: 5px;
+    }
+  </style>
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+  <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+</head>
+<body>
+  <header>
+    <h1>Map View</h1>
+    <a id="back-to-homepage" href="index.html">Back to Homepage</a>
+  </header>
+  <div id="map-container">
+    <div id="map"></div>
+    <div class="loading" id="loading">Loading map...</div>
+    <button class="btn-toggle" onclick="toggleInfo()" aria-label="Toggle Location Info">Show/Hide Location Info</button>
+    <button class="btn-summarize" onclick="summarizeInfo()" aria-label="Summarize Location Info">Summarize Info</button>
+    <div id="info-panel" aria-live="polite">
+      <h2>Location Details</h2>
+      <div id="location-details"></div>
+    </div>
+  </div>
+  <footer>
+    <p>&copy; 2024 CodeCanvas Studios</p>
+    <a class="portfolio-link" href="https://volcano08.github.io/Portfolio/" target="_blank">Go To Portfolio</a>
+  </footer>
+  <script>
+    function toggleInfo() {
+      $('#info-panel').toggleClass('show');
+    }
+
+    function fetchLocationDetails(coords) {
+      var lat = coords[0];
+      var lon = coords[1];
+      var wikipediaUrl = `https://en.wikipedia.org/w/api.php?action=query&list=geosearch&gscoord=${lat}%7C${lon}&gsradius=10000&gslimit=1&format=json&origin=*`;
+
+      return $.getJSON(wikipediaUrl)
+        .then(function(data) {
+          if (data.query.geosearch.length > 0) {
+            var pageid = data.query.geosearch[0].pageid;
+            var title = data.query.geosearch[0].title;
+            var flagPromise = fetchFlag(title);
+            var detailsPromise = $.getJSON(`https://en.wikipedia.org/w/api.php?action=query&prop=extracts|pageimages&exintro=&explaintext=&piprop=original&format=json&origin=*&pageids=${pageid}`);
+            
+            return Promise.all([detailsPromise, flagPromise]).then(function(results) {
+              var details = results[0];
+              var flagUrl = results[1];
+              var extract = details.query.pages[pageid].extract;
+              var image = details.query.pages[pageid].original ? details.query.pages[pageid].original.source : '';
+              return {
+                name: title,
+                description: extract,
+                link: `https://en.wikipedia.org/?curid=${pageid}`,
+                flag: flagUrl,
+                image: image
+              };
+            });
+          } else {
+            return {
+              name: 'Unknown',
+              description: 'No detailed information available.',
+              link: '#',
+              flag: '',
+              image: ''
+            };
+          }
+        });
+    }
+
+    function fetchFlag(title) {
+      var country = title.split(' ').pop(); // Simplistic way to guess the country name from the title
+      var countryFlagUrl = `https://en.wikipedia.org/w/api.php?action=query&titles=File:Flag_of_${country}.svg&prop=imageinfo&iiprop=url&format=json&origin=*`;
+
+      return $.getJSON(countryFlagUrl)
+        .then(function(data) {
+          var pages = data.query.pages;
+          var flagUrl = '';
+          for (var page in pages) {
+            if (pages[page].imageinfo) {
+              flagUrl = pages[page].imageinfo[0].url;
+              break;
+            }
+          }
+          return flagUrl;
+        });
+    }
+
+    function tokenize(text) {
+      return text.match(/\b(\w+)\b/g).map(word => word.toLowerCase());
+    }
+
+    function removeStopwords(tokens) {
+      const stopwords = new Set(["i", "me", "my", "myself", "we", "our", "ours", "ourselves", "you", "your", "yours", "yourself", "yourselves", "he", "him", "his", "himself", "she", "her", "hers", "herself", "it", "its", "itself", "they", "them", "their", "theirs", "themselves", "what", "which", "who", "whom", "this", "that", "these", "those", "am", "is", "are", "was", "were", "be", "been", "being", "have", "has", "had", "having", "do", "does", "did", "doing", "a", "an", "the", "and", "but", "if", "or", "because", "as", "until", "while", "of", "at", "by", "for", "with", "about", "against", "between", "into", "through", "during", "before", "after", "above", "below", "to", "from", "up", "down", "in", "out", "on", "off", "over", "under", "again", "further", "then", "once", "here", "there", "when", "where", "why", "how", "all", "any", "both", "each", "few", "more", "most", "other", "some", "such", "no", "nor", "not", "only", "own", "same", "so", "than", "too", "very", "s", "t", "can", "will", "just", "don", "should", "now"]);
+      return tokens.filter(token => !stopwords.has(token));
+    }
+
+    function computeTF(tokens) {
+      const tf = {};
+      tokens.forEach(token => {
+        tf[token] = (tf[token] || 0) + 1;
+      });
+      const totalTokens = tokens.length;
+      Object.keys(tf).forEach(token => {
+        tf[token] = tf[token] / totalTokens;
+      });
+      return tf;
+    }
+
+    function computeIDF(docs) {
+      const idf = {};
+      const totalDocs = docs.length;
+      docs.forEach(tokens => {
+        const seenTokens = new Set();
+        tokens.forEach(token => {
+          if (!seenTokens.has(token)) {
+            idf[token] = (idf[token] || 0) + 1;
+            seenTokens.add(token);
+          }
+        });
+      });
+      Object.keys(idf).forEach(token => {
+        idf[token] = Math.log(totalDocs / idf[token]);
+      });
+      return idf;
+    }
+
+    function computeTFIDF(tf, idf) {
+      const tfidf = {};
+      Object.keys(tf).forEach(token => {
+        tfidf[token] = tf[token] * idf[token];
+      });
+      return tfidf;
+    }
+
+    function cosineSimilarity(vec1, vec2) {
+      const commonTokens = Object.keys(vec1).filter(token => vec2[token] !== undefined);
+      const dotProduct = commonTokens.reduce((sum, token) => sum + vec1[token] * vec2[token], 0);
+      const magnitude1 = Math.sqrt(Object.values(vec1).reduce((sum, val) => sum + val * val, 0));
+      const magnitude2 = Math.sqrt(Object.values(vec2).reduce((sum, val) => sum + val * val, 0));
+      return dotProduct / (magnitude1 * magnitude2);
+    }
+
+    function buildGraph(sentences, tfidfVectors) {
+      const graph = {};
+      sentences.forEach((_, idx) => {
+        graph[idx] = [];
+        sentences.forEach((__, otherIdx) => {
+          if (idx !== otherIdx) {
+            const similarity = cosineSimilarity(tfidfVectors[idx], tfidfVectors[otherIdx]);
+            if (similarity > 0) {
+              graph[idx].push({ idx: otherIdx, weight: similarity });
+            }
+          }
+        });
+      });
+      return graph;
+    }
+
+    function rankSentences(graph, d = 0.85, maxIter = 100) {
+      let scores = {};
+      Object.keys(graph).forEach(idx => scores[idx] = 1);
+
+      for (let iter = 0; iter < maxIter; iter++) {
+        let newScores = {};
+        Object.keys(graph).forEach(idx => {
+          const neighbors = graph[idx];
+          const rankSum = neighbors.reduce((sum, neighbor) => sum + scores[neighbor.idx] * neighbor.weight, 0);
+          newScores[idx] = (1 - d) + d * rankSum;
+        });
+        scores = newScores;
+      }
+      return scores;
+    }
+
+    function summarizeText(text, sourceLink, flagUrl) {
+      const sentences = text.split('. ');
+      if (sentences.length <= 2) return text;
+
+      const tokenizedSentences = sentences.map(sentence => removeStopwords(tokenize(sentence)));
+      const tfidfVectors = tokenizedSentences.map(tokens => computeTFIDF(computeTF(tokens), computeIDF(tokenizedSentences)));
+      const graph = buildGraph(sentences, tfidfVectors);
+      const scores = rankSentences(graph);
+      const rankedSentences = Object.keys(scores).sort((a, b) => scores[b] - scores[a]);
+
+      const summary = rankedSentences.slice(0, Math.min(3, rankedSentences.length)).map(idx => sentences[idx]).join('. ') + `. <a href="${sourceLink}" target="_blank">Read more on Wikipedia</a>`;
+      return `
+        <img src="${flagUrl}" alt="Flag" class="flag">
+        <p>${summary}</p>
+      `;
+    }
+
+    function summarizeInfo() {
+      const originalText = $('#location-details').text();
+      const sourceLink = $('#location-details a').attr('href');
+      const flagUrl = $('#location-details img.flag').attr('src');
+      const summary = summarizeText(originalText, sourceLink, flagUrl);
+      $('#location-details').html(`
+        <p><strong>Summary:</strong></p>
+        ${summary}
+      `);
+    }
+
+    $(document).ready(function() {
+      const coordinates = localStorage.getItem('destinationCoordinates');
+      if (coordinates) {
+        const coordsArray = coordinates.split(',').map(Number);
+
+        const map = L.map('map').setView(coordsArray, 13);
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        }).addTo(map);
+
+        L.marker(coordsArray, { alt: 'Selected Destination Marker' }).addTo(map)
+          .bindPopup('Selected Destination')
+          .openPopup();
+
+        fetchLocationDetails(coordsArray).then(function(locationDetails) {
+          $('#location-details').html(`
+            <img src="${locationDetails.flag}" alt="Flag" class="flag">
+            <p><strong>Name:</strong> ${locationDetails.name}</p>
+            <p><strong>Description:</strong> ${locationDetails.description}</p>
+            <p><strong>More info:</strong> <a href="${locationDetails.link}" target="_blank">Wikipedia</a></p>
+          `);
+          $('#loading').hide();
+        }).catch(function() {
+          $('#location-details').html('<p>Error fetching location details.</p>');
+          $('#loading').hide();
+        });
+      } else {
+        alert('No destination coordinates found.');
+        $('#loading').hide();
+      }
+    });
+  </script>
+</body>
+</html>
