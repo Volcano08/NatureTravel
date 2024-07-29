@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Popular Nature Destinations</title>
+  <style>
+    body {
+      font-family: 'Open Sans', sans-serif;
+      margin: 0;
+      padding: 0;
+      background-color: #e6f2e6; /* Soft green */
+      color: #2e4600; /* Dark green */
+      overflow: hidden; /* To ensure leaves don't cause scrollbars */
+    }
+    header {
+      background-image: url('https://source.unsplash.com/random/1600x900?nature,forest');
+      background-size: cover;
+      background-position: center;
+      color: #fff;
+      padding: 40px 0;
+      text-align: center;
+      position: relative;
+    }
+    header:after {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.4);
+    }
+    header h1 {
+      margin: 0;
+      font-size: 3em;
+      position: relative;
+      z-index: 1;
+    }
+    .destinations-section {
+      padding: 20px;
+      background-color: #fff; /* White background for contrast */
+    }
+    .destinations-section h2 {
+      font-size: 2em;
+      margin-bottom: 20px;
+      text-align: center;
+      color: #2e4600;
+    }
+    .destinations-container {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-around;
+    }
+    .destination {
+      background-color: #f9f9f9;
+      border: 1px solid #ddd;
+      border-radius: 10px;
+      margin: 10px;
+      padding: 20px;
+      width: 30%;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      text-align: center;
+      transition: transform 0.3s;
+    }
+    .destination:hover {
+      transform: scale(1.05);
+    }
+    footer {
+      background-color: #2e4600;
+      color: #fff;
+      padding: 20px 0;
+      text-align: center;
+      position: fixed;
+      bottom: 0;
+      width: 100%;
+    }
+    footer .container {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    footer p {
+      margin: 0;
+    }
+    footer .portfolio-link {
+      color: #b3e6b3; /* Light green */
+      text-decoration: none;
+      font-weight: bold;
+    }
+    footer .portfolio-link:hover {
+      text-decoration: underline;
+    }
+    @media (max-width: 600px) {
+      .destination {
+        width: 100%;
+      }
+      header h1 {
+        font-size: 2em;
+      }
+    }
+    .leaf {
+      position: absolute;
+      width: 30px;
+      height: 30px;
+      background-size: contain;
+      background-repeat: no-repeat;
+      animation: fall linear infinite;
+    }
+    @keyframes fall {
+      0% {
+        transform: translateY(-100vh) rotate(0deg);
+      }
+      100% {
+        transform: translateY(100vh) rotate(360deg);
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Popular Nature Destinations</h1>
+  </header>
+  <main>
+    <section id="destinations" class="destinations-section">
+      <h2>Popular Nature Destinations</h2>
+      <div id="destinations-container" class="destinations-container"></div>
+    </section>
+  </main>
+  <footer>
+    <div class="container">
+      <p>&copy; 2024 CodeCanvas Studios. All rights reserved.</p>
+      <a href="https://volcano08.github.io/Portfolio/" class="portfolio-link">Go To Portfolio</a>
+    </div>
+  </footer>
+  <script>
+    // Fetch destination data
+    fetch('http://api.geonames.org/searchJSON?q=nature&maxRows=10&username=demo')
+      .then(response => response.json())
+      .then(data => {
+        const container = document.getElementById('destinations-container');
+        data.geonames.forEach(location => {
+          const destination = document.createElement('div');
+          destination.classList.add('destination');
+          destination.innerHTML = `
+            <h3>${location.name}, ${location.countryName}</h3>
+            <p>Population: ${location.population}</p>
+          `;
+          container.appendChild(destination);
+        });
+      })
+      .catch(error => console.error('Error fetching data:', error));
+
+    // Generate leaves
+    const leafColors = ['#ff6347', '#ff4500', '#ff8c00', '#32cd32', '#228b22'];
+    const leafImages = [
+      'url(https://i.imgur.com/dngQwBa.png)',
+      'url(https://i.imgur.com/9Rdf8xe.png)',
+      'url(https://i.imgur.com/Z3ECJBZ.png)',
+      'url(https://i.imgur.com/TPThV7u.png)',
+      'url(https://i.imgur.com/gmtzX0e.png)'
+    ];
+
+    function createLeaf() {
+      const leaf = document.createElement('div');
+      leaf.classList.add('leaf');
+      leaf.style.left = `${Math.random() * 100}vw`;
+      leaf.style.animationDuration = `${Math.random() * 3 + 2}s`;
+      leaf.style.backgroundImage = leafImages[Math.floor(Math.random() * leafImages.length)];
+      document.body.appendChild(leaf);
+
+      // Remove leaf after animation
+      setTimeout(() => {
+        leaf.remove();
+      }, 5000); // Adjust duration to match the animation duration
+    }
+
+    // Create leaves at intervals
+    setInterval(createLeaf, 500);
+  </script>
+</body>
+</html>
