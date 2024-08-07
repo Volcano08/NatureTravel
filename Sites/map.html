@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Map View</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+  <style>
+    body, html {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      font-family: 'Roboto', sans-serif;
+      display: flex;
+      flex-direction: column;
+    }
+    header, footer {
+      background: #333;
+      color: #fff;
+      text-align: center;
+      padding: 10px;
+      flex-shrink: 0;
+    }
+    header {
+      position: relative;
+    }
+    #back-to-homepage {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: #333;
+      color: #fff;
+      padding: 10px;
+      border: none;
+      text-decoration: none;
+      font-size: 14px;
+    }
+    #map-container {
+      flex: 1;
+      display: flex;
+      position: relative;
+    }
+    #map {
+      flex: 1;
+      width: 100%;
+    }
+    #info-panel {
+      position: absolute;
+      top: 0;
+      right: -400px;
+      width: 400px;
+      height: 100%;
+      background: rgba(255, 255, 255, 0.95);
+      box-shadow: -2px 0 5px rgba(0, 0, 0, 0.5);
+      padding: 20px;
+      transition: right 0.3s ease;
+      overflow-y: auto;
+      z-index: 1000;
+    }
+    #info-panel.show {
+      right: 0;
+    }
+    .btn-toggle, .btn-summarize {
+      background: #333;
+      color: #fff;
+      padding: 10px;
+      border: none;
+      cursor: pointer;
+      position: absolute;
+      z-index: 1001;
+    }
+    .btn-toggle {
+      top: 10px;
+      right: 10px;
+    }
+    .btn-summarize {
+      top: 50px;
+      right: 10px;
+    }
+    .loading {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 20px;
+      color: #333;
+    }
+    .flag {
+      width: 100px;
+      display: block;
+      margin-bottom: 10px;
+    }
+    .portfolio-link {
+      color: #ff5722;
+      font-weight: bold;
+      display: block;
+      margin-top: 5px;
+    }
+  </style>
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+  <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+</head>
+<body>
+  <header>
+    <h1>Map View</h1>
+    <a id="back-to-homepage" href="../index.html">Back to Homepage</a>
+  </header>
+  <div id="map-container">
+    <div id="map"></div>
+    <div class="loading" id="loading">Loading map...</div>
+    <button class="btn-toggle" onclick="toggleInfo()" aria-label="Toggle Location Info">Show/Hide Location Info</button>
+    <button class="btn-summarize" onclick="summarizeInfo()" aria-label="Summarize Location Info">Summarize Info</button>
+    <div id="info-panel" aria-live="polite">
+      <h2>Location Details</h2>
+      <div id="location-details"></div>
+    </div>
+  </div>
+  <footer>
+    <p>&copy; 2024 CodeCanvas Studios</p>
+    <a class="portfolio-link" href="https://volcano08.github.io/Portfolio/" target="_blank">Go To Portfolio</a>
+  </footer>
+  <script>
+    function toggleInfo() {
+      $('#info-panel').toggleClass('show');
+    }
+
+    function fetchLocationDetails(coords) {
+      var lat = coords[0];
+      var lon = coords[1];
+      var wikipediaUrl = `https://en.wikipedia.org/w/api.php?action=query&list=geosearch&gscoord=${lat}%7C${lon}&gsradius=10000&gslimit=1&format=json&origin=*`;
+
+      return $.getJSON(wikipediaUrl)
+        .then(function(data) {
+          if (data.query.geosearch.length > 0) {
+            var pageid = data.query.geosearch[0].pageid;
+            var title = data.query.geosearch[0].title;
+            var flagPromise = fetchFlag(title);
+            var detailsPromise = $.getJSON(`https://en.wikipedia.org/w/api.php?action=query&prop=extracts|pageimages&exintro=&explaintext=&piprop=original&format=json&origin=*&pageids=${pageid}`);
+            
+            return Promise.all([detailsPromise, flagPromise]).then(function(results) {
+              var details = results[0];
+              var flagUrl = results[1];
+              var extract = details.query.pages[pageid].extract;
+              var image = details.query.pages[pageid].original ? details.query.pages[pageid].original.source : '';
+              return {
+                name: title,
+                description: extract,
+                link: `https://en.wikipedia.org/?curid=${pageid}`,
+                flag: flagUrl,
+                image: image
+              };
+            });
+          } else {
+            return {
+              name: 'Unknown',
+              description: 'No detailed information available.',
+              link: '#',
+              flag: '',
+              image: ''
+            };
+          }
+        });
+    }
+
+    function fetchFlag(title) {
+      var country = title.split(' ').pop(); // Simplistic way to guess the country name from the title
+      var countryFlagUrl = `https://en.wikipedia.org/w/api.php?action=query&titles=File:Flag_of_${country}.svg&prop=imageinfo&iiprop=url&format=json&origin=*`;
+
+      return $.getJSON(countryFlagUrl)
+        .then(function(data) {
+          var pages = data.query.pages;
+          var flagUrl = '';
+          for (var page in pages) {
+            if (pages[page].imageinfo) {
+              flagUrl = pages[page].imageinfo[0].url;
+              break;
+            }
+          }
+          return flagUrl;
+        });
+    }
+
+    $(document).ready(function() {
+      const queryString = window.location.search;
+      const urlParams = new URLSearchParams(queryString);
+      const coordinates = urlParams.get('coords');
+      
+      if (coordinates) {
+        const coordsArray = coordinates.split(',').map(Number);
+
+        const map = L.map('map').setView(coordsArray, 13);
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        }).addTo(map);
+
+        L.marker(coordsArray, { alt: 'Selected Destination Marker' }).addTo(map)
+          .bindPopup('Selected Destination')
+          .openPopup();
+
+        fetchLocationDetails(coordsArray).then(function(locationDetails) {
+          $('#location-details').html(`
+            <img src="${locationDetails.flag}" alt="Flag" class="flag">
+            <p><strong>Name:</strong> ${locationDetails.name}</p>
+            <p><strong>Description:</strong> ${locationDetails.description}</p>
+            <p><strong>More info:</strong> <a href="${locationDetails.link}" target="_blank">Wikipedia</a></p>
+          `);
+          $('#loading').hide();
+        }).catch(function() {
+          $('#location-details').html('<p>Error fetching location details.</p>');
+          $('#loading').hide();
+        });
+      } else {
+        alert('No destination coordinates found.');
+        $('#loading').hide();
+      }
+    });
+  </script>
+</body>
+</html>
